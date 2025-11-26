@@ -24,11 +24,11 @@ volumes:
 
 ------------**#Caddyfile**--------------------
 ```
-http://{$SELF_STEAL_DOMAIN} {
-    redir https://{$SELF_STEAL_DOMAIN}{uri} permanent
+{
+    auto_https disable_redirects
 }
 
-https://{$SELF_STEAL_DOMAIN} {
+squid-game.su:443 {
     # Placeholder сайт на корне
     root * /var/www/html
 
