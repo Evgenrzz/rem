@@ -12,7 +12,7 @@ Step 0 — Updating and installing requirement tools
 
 Step 1 — Install Docker
 
-# Install Docker using the official convenience script
+# NODE!!!! - Install Docker using the official convenience script
 `curl -fsSL https://get.docker.com | sh`
 
 Step 2 — Download required files
