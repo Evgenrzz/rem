@@ -58,3 +58,86 @@ https://{$SELF_STEAL_DOMAIN} {
     }
 }
 ```
+
+------------**#Xray config**--------------------
+```
+{
+  "log": {
+    "loglevel": "info"
+  },
+  "inbounds": [
+    {
+      "tag": "VLESS_XHTTP",
+      "port": 8443,
+      "listen": "127.0.0.1",
+      "protocol": "vless",
+      "settings": {
+        "clients": [],
+        "decryption": "none"
+      },
+      "sniffing": {
+        "enabled": true,
+        "routeOnly": false,
+        "destOverride": [
+          "http",
+          "tls",
+          "quic",
+          "fakedns"
+        ],
+        "metadataOnly": false
+      },
+      "streamSettings": {
+        "network": "xhttp",
+        "xhttpSettings": {
+          "mode": "auto",
+          "path": "/xhttppath/",
+          "extra": {
+            "noSSEHeader": true,
+            "xPaddingBytes": "100-1000",
+            "scMaxBufferedPosts": 30,
+            "scMaxEachPostBytes": 1000000,
+            "scMaxConcurrentPosts": "100-200",
+            "scMinPostsIntervalMs": "10-30",
+            "scStreamUpServerSecs": "20-80"
+          }
+        }
+      }
+    }
+  ],
+  "outbounds": [
+    {
+      "tag": "DIRECT",
+      "protocol": "freedom"
+    },
+    {
+      "tag": "BLOCK",
+      "protocol": "blackhole"
+    }
+  ],
+  "routing": {
+    "rules": [
+      {
+        "ip": [
+          "geoip:private"
+        ],
+        "type": "field",
+        "outboundTag": "BLOCK"
+      },
+      {
+        "type": "field",
+        "domain": [
+          "geosite:private"
+        ],
+        "outboundTag": "BLOCK"
+      },
+      {
+        "type": "field",
+        "protocol": [
+          "bittorrent"
+        ],
+        "outboundTag": "BLOCK"
+      }
+    ]
+  }
+}
+```
