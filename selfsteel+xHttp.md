@@ -146,3 +146,14 @@ squid-game.su:443 {
   }
 }
 ```
+
+# Проверить что HTML видны в контейнере
+docker exec caddy-remnawave ls -la /var/www/html/
+
+# Проверить сайт
+curl -s https://interstellar.su/ | head -20
+
+# Перезапуск!
+cd /opt/selfsteel
+docker compose down
+docker compose up -d
