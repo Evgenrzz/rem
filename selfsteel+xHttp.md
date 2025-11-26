@@ -1,3 +1,8 @@
+.env
+```
+SELF_STEAL_DOMAIN=node.temnoevpn.net
+SELF_STEAL_PORT=8443
+```
 ------------**#selfsteel**------------<br/>
 cd /opt/selfsteel  <br/>
 nano docker-compose.yml
