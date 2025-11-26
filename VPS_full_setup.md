@@ -1,44 +1,7 @@
-НЕ ТЕСТИЛ!<br>
+# 🛡️ Pi-Hole для Remnawave Node
 
 
-
-# 🚀 Полная установка VPS: xhttp + Reality + Pi-Hole
-
-**Свежий сервер → Готовый VPN с блокировкой рекламы за 30 минут**
-
----
-
-## 📋 Что будет установлено
-
-- ✅ Docker + Docker Compose
-- ✅ Remnawave Node (xhttp + Reality)
-- ✅ Pi-Hole (блокировка рекламы)
-- ✅ Firewall (UFW)
-- ✅ Автозапуск при перезагрузке
-
----
----
-
----
-
-## 🔧 Шаг 2: Обновить систему
-
-```bash
-# Обновить пакеты
-apt update && apt upgrade -y
-
-# Установить необходимые утилиты
-apt install -y curl wget git nano htop net-tools dnsutils
-
-# Установить UFW firewall
-apt install -y ufw
-```
-
----
-
-## 🐳 Шаг 3: Установить Docker
 ## 🛡️ Шаг 6: Установить Pi-Hole
-
 ```bash
 # Остановить systemd-resolved (занимает порт 53)
 systemctl stop systemd-resolved
@@ -59,17 +22,6 @@ ping -c 2 google.com
 curl -sSL https://install.pi-hole.net | bash
 ```
 
-### Во время установки Pi-Hole:
-
-1. **Upstream DNS:** Выберите `Cloudflare (1.1.1.1)` → OK
-2. **Blocklists:** Оставьте все галочки → OK
-3. **Admin Web Interface:** `On (Recommended)` → OK
-4. **Web Server:** `On (Recommended)` → OK
-5. **Log Queries:** `On (Recommended)` → OK
-6. **Privacy Mode:** `0 Show everything` → OK
-7. **⚠️ ЗАПИШИТЕ ПАРОЛЬ** в конце установки!
-
----
 
 ## 🔒 Шаг 7: Настроить DNS для Pi-Hole
 
@@ -92,313 +44,84 @@ dig @127.0.0.1 doubleclick.net +short
 # Должен вернуть: 0.0.0.0
 ```
 
----
 
-## 📦 Шаг 8: Установить Remnawave Node
+
 
 ```bash
-# Создать директорию
-mkdir -p /opt/remnanode
+# 1. Освободить порт 53
+systemctl stop systemd-resolved
+systemctl disable systemd-resolved
+
+# 2. Настроить временный DNS
+rm -f /etc/resolv.conf
+cat > /etc/resolv.conf << 'EOF'
+nameserver 1.1.1.1
+nameserver 8.8.8.8
+EOF
+
+# 3. Установить Pi-Hole
+curl -sSL https://install.pi-hole.net | bash
+# Во время установки выбирайте "On (Recommended)" для всех опций
+# ⚠️ ЗАПИШИТЕ ПАРОЛЬ в конце установки!
+
+# 4. Настроить систему использовать Pi-Hole
+cat > /etc/resolv.conf << 'EOF'
+nameserver 127.0.0.1
+nameserver 1.1.1.1
+EOF
+chattr +i /etc/resolv.conf
+
+# 5. Перезапустить Remnawave Node
 cd /opt/remnanode
-
-# Получить данные из Remnawave Panel:
-# - NODE_ID
-# - NODE_TOKEN
-# - PANEL_URL
-
-# Создать .env файл
-nano .env
+docker compose restart
 ```
 
-Вставьте (замените на ваши данные):
-```env
-NODE_ID=ваш_node_id
-NODE_TOKEN=ваш_токен
-PANEL_URL=https://ваша_панель.com
-```
-
-Сохранить: `Ctrl+X` → `Y` → `Enter`
-
----
-
-## 🎯 Шаг 9: Создать docker-compose.yml
+## Проверка
 
 ```bash
-nano docker-compose.yml
-```
-
-Вставьте:
-```yaml
-services:
-  remnanode:
-    image: remnawave/node:latest
-    container_name: remnanode
-    network_mode: host
-    restart: unless-stopped
-    environment:
-      - NODE_ID=${NODE_ID}
-      - NODE_TOKEN=${NODE_TOKEN}
-      - NODE_PORT=443
-      - PANEL_URL=${PANEL_URL}
-    volumes:
-      - ./xray-config.json:/etc/xray/config.json:ro
-```
-
-Сохранить: `Ctrl+X` → `Y` → `Enter`
-
----
-
-## ⚙️ Шаг 10: Создать xray-config.json для Reality
-
-```bash
-nano xray-config.json
-```
-
-Вставьте (замените `ВСТАВЬТЕ_ВАШ_ПРИВАТНЫЙ_КЛЮЧ` на ключ из Шага 5):
-```json
-{
-  "log": {
-    "loglevel": "warning"
-  },
-  "inbounds": [
-    {
-      "tag": "VLESS_XHTTP_REALITY",
-      "port": 443,
-      "listen": "0.0.0.0",
-      "protocol": "vless",
-      "settings": {
-        "clients": [],
-        "decryption": "none"
-      },
-      "sniffing": {
-        "enabled": true,
-        "destOverride": [
-          "http",
-          "tls",
-          "quic"
-        ]
-      },
-      "streamSettings": {
-        "network": "xhttp",
-        "security": "reality",
-        "realitySettings": {
-          "dest": "www.kinopoisk.ru:443",
-          "show": false,
-          "xver": 0,
-          "spiderX": "/",
-          "shortIds": [
-            "",
-            "39",
-            "6ba85179e30d4fc2"
-          ],
-          "privateKey": "ВСТАВЬТЕ_ВАШ_ПРИВАТНЫЙ_КЛЮЧ",
-          "fingerprint": "chrome",
-          "serverNames": [
-            "www.kinopoisk.ru",
-            "kinopoisk.ru"
-          ]
-        },
-        "xhttpSettings": {
-          "mode": "auto",
-          "path": "/NXd5ncXjj0QRj9Weo",
-          "host": "www.kinopoisk.ru"
-        }
-      }
-    }
-  ],
-  "outbounds": [
-    {
-      "tag": "DIRECT",
-      "protocol": "freedom"
-    },
-    {
-      "tag": "BLOCK",
-      "protocol": "blackhole"
-    }
-  ],
-  "routing": {
-    "rules": [
-      {
-        "ip": [
-          "geoip:private"
-        ],
-        "type": "field",
-        "outboundTag": "BLOCK"
-      },
-      {
-        "type": "field",
-        "domain": [
-          "geosite:private"
-        ],
-        "outboundTag": "BLOCK"
-      },
-      {
-        "type": "field",
-        "protocol": [
-          "bittorrent"
-        ],
-        "outboundTag": "BLOCK"
-      }
-    ]
-  }
-}
-```
-
-Сохранить: `Ctrl+X` → `Y` → `Enter`
-
----
-
-## 🚀 Шаг 11: Запустить Remnawave Node
-
-```bash
-# Запустить контейнер
-docker compose up -d
-
-# Проверить статус
-docker ps
-# Должен показать remnanode
-
-# Проверить логи
-docker logs remnanode --tail 50
-
-# Проверить порты
-ss -tulpn | grep :443
-# Должен показать xray
-```
-
----
-
-## ✅ Шаг 12: Проверка установки
-
-```bash
-# Проверить Pi-Hole
-pihole status
-# Должно: Pi-hole blocking is enabled
-
-# Проверить DNS
-docker exec remnanode cat /etc/resolv.conf
-# Должно показать: nameserver 127.0.0.1
-
 # Проверить блокировку
-docker exec remnanode nslookup doubleclick.net
+dig @127.0.0.1 doubleclick.net +short
 # Должен вернуть: 0.0.0.0
 
-# Проверить Reality
-curl -I https://ВАШ_IP_СЕРВЕРА
-# Должен ответить как kinopoisk.ru
+# Проверить статус
+pihole status
 ```
 
----
-
-## 🎨 Шаг 13: Добавить пользователя в Remnawave Panel
-
-В панели Remnawave:
-
-1. Перейдите в **Nodes** → выберите ваш Node
-2. Нажмите **Add Inbound**
-3. Настройки:
-   - **Protocol:** VLESS
-   - **Port:** 443
-   - **Transport:** xhttp
-   - **Security:** Reality
-   - **Reality Settings:**
-     - **Public Key:** (публичный ключ из Шага 5)
-     - **Server Name:** www.kinopoisk.ru
-     - **Short IDs:** 39
-     - **Fingerprint:** chrome
-4. Создайте пользователя
-5. Получите конфигурацию для клиента
-
----
-
-## 📱 Шаг 14: Настройка клиента
-
-### Для v2rayN (Windows):
-
-1. Скачать конфигурацию из панели (QR код или JSON)
-2. Импортировать в v2rayN
-3. Включить подключение
-
-### Настройки вручную:
-
-```
-Protocol: VLESS
-Address: ВАШ_IP_СЕРВЕРА
-Port: 443
-UUID: (из панели)
-Encryption: none
-
-Stream Settings:
-- Network: xhttp
-- Security: reality
-- Path: /NXd5ncXjj0QRj9Weo
-- Host: www.kinopoisk.ru
-
-Reality Settings:
-- Public Key: (из Шага 5)
-- Server Name: www.kinopoisk.ru
-- Short ID: 39
-- Fingerprint: chrome
-```
-
----
-
-## 🎯 Шаг 15: Добавить блок-листы в Pi-Hole (опционально)
+## Дополнительно
 
 ```bash
-# Установить sqlite3
+# Добавить больше блок-листов (опционально)
 apt install sqlite3 -y
-
-# Добавить популярный блок-лист
 sqlite3 /etc/pihole/gravity.db "INSERT INTO adlist (address, enabled, comment) VALUES ('https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts', 1, 'StevenBlack');"
-
-# Обновить списки
 pihole -g
 
-# Проверить количество блокируемых доменов
-pihole status
-```
-
----
-
-## 🌐 Шаг 16: Доступ к Pi-Hole Web интерфейсу
-
-```bash
-# Узнать IP сервера
-ip a | grep "inet " | grep -v 127.0.0.1
-
-# Открыть в браузере:
-# http://ВАШ_IP/admin
-
+# Web интерфейс: http://ваш_IP/admin
 # Логин: admin
-# Пароль: (из установки Pi-Hole)
-
-# Если забыли пароль:
-pihole -a -p
-# Введите новый пароль дважды
+# Сменить пароль: pihole -a -p
 ```
 
----
-
-## 🔄 Шаг 17: Автозапуск при перезагрузке
+## Команды
 
 ```bash
-# Docker уже настроен на автозапуск
-systemctl enable docker
+pihole status        # Статус
+pihole -g            # Обновить блок-листы
+pihole -t            # Мониторинг запросов
+pihole disable 5m    # Отключить на 5 минут
+pihole restartdns    # Перезапустить DNS
+```
 
-# Контейнер настроен с restart: unless-stopped
-# Проверить:
-docker inspect remnanode | grep -A 5 "RestartPolicy"
+## Решение проблем
 
-# Проверить автозапуск Pi-Hole
-systemctl enable pihole-FTL
+```bash
+# Порт 53 занят
+systemctl stop systemd-resolved
+pihole restartdns
 
-# Перезагрузить сервер для теста
-reboot
+# DNS не работает
+systemctl restart pihole-FTL
 
-# После перезагрузки проверить:
-docker ps
-pihole status
+# resolv.conf изменился
+chattr +i /etc/resolv.conf
 ```
 
 ---
