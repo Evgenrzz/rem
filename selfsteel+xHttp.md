@@ -1,6 +1,6 @@
 ------------**selfsteel**------------<br/>
 cd /opt/selfsteel  <br/>
-nano docker-compose.yml  \
+nano docker-compose.yml
 ```
 services:
   caddy:
