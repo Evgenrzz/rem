@@ -12,7 +12,7 @@ Step 0 — Updating and installing requirement tools
 
 Step 1 — Install Docker
 
-# NODE!!!! - Install Docker using the official convenience script
+# Install Docker using the official convenience script
 `curl -fsSL https://get.docker.com | sh`
 
 Step 2 — Download required files
@@ -148,7 +148,7 @@ networks:
 
 `docker compose up -d && docker compose logs -f`
 
-Step 7 — Remnawave Node configuration
+# NODE!!!! - Step 7 — Remnawave Node configuration
 
 Open your second vps server, for node you created before
 
