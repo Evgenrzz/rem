@@ -1,7 +1,7 @@
 ------------**selfsteel**------------
 cd /opt/selfsteel
 nano docker-compose.yml
-
+```
 services:
   caddy:
     image: caddy:latest
@@ -20,9 +20,10 @@ services:
 volumes:
   caddy_data:
   caddy_config:
-
+```
 
 ------------**#Caddyfile**--------------------
+```
 http://{$SELF_STEAL_DOMAIN} {
     redir https://{$SELF_STEAL_DOMAIN}{uri} permanent
 }
@@ -56,3 +57,4 @@ https://{$SELF_STEAL_DOMAIN} {
         file_server
     }
 }
+```
