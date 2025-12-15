@@ -234,36 +234,23 @@ EOF
     
     # TCP Fast Open (если не установлен)
     if [[ "$HAS_TFO" == "false" ]]; then
-        echo ""
-        echo "⚙️  Установить TCP Fast Open (ускорение соединений)?"
-        echo "   Рекомендуется для XHTTP протокола"
-        read -p "   Установить? (Y/n): " -n 1 -r TFO_CHOICE
-        echo ""
-        
-        if [[ ! $TFO_CHOICE =~ ^[Nn]$ ]]; then
-            echo "✅ Установка TCP Fast Open"
-            cat >> /etc/sysctl.d/99-xray-optimize.conf << 'EOF'
+        echo "[+] Установка TCP Fast Open (ускорение соединений для XHTTP)..."
+        cat >> /etc/sysctl.d/99-xray-optimize.conf << 'EOF'
 
-# TCP Fast Open
+# Ускорение установки TCP соединений
 net.ipv4.tcp_fastopen = 3
 EOF
-            ACTIONS_DONE+="✅ TCP Fast Open установлен\n"
-        else
-            echo "ℹ️  Пропуск TCP Fast Open"
-        fi
+        sysctl -w net.ipv4.tcp_fastopen=3 > /dev/null 2>&1
+        ACTIONS_DONE+="✅ TCP Fast Open установлен\n"
+    else
+        echo "[✓] TCP Fast Open уже установлен"
+        ACTIONS_DONE+="✅ TCP Fast Open уже был установлен\n"
     fi
     
     # TCP буферы (если не установлены)
     if [[ "$HAS_BUFFERS" == "false" ]]; then
-        echo ""
-        echo "⚙️  Увеличить TCP буферы для высокой скорости?"
-        echo "   Рекомендуется для каналов >100 Мбит/с"
-        read -p "   Установить? (Y/n): " -n 1 -r BUFFER_CHOICE
-        echo ""
-        
-        if [[ ! $BUFFER_CHOICE =~ ^[Nn]$ ]]; then
-            echo "✅ Увеличение TCP буферов"
-            cat >> /etc/sysctl.d/99-xray-optimize.conf << 'EOF'
+        echo "[+] Увеличение TCP буферов для каналов >100 Мбит/с..."
+        cat >> /etc/sysctl.d/99-xray-optimize.conf << 'EOF'
 
 # TCP буферы для высокой пропускной способности
 net.core.rmem_max = 134217728
@@ -272,13 +259,16 @@ net.ipv4.tcp_rmem = 4096 87380 67108864
 net.ipv4.tcp_wmem = 4096 65536 67108864
 net.core.netdev_max_backlog = 5000
 EOF
-            ACTIONS_DONE+="✅ TCP буферы увеличены\n"
-        else
-            echo "ℹ️  Пропуск увеличения буферов"
-        fi
+        sysctl -w net.core.rmem_max=134217728 > /dev/null 2>&1
+        sysctl -w net.core.wmem_max=134217728 > /dev/null 2>&1
+        sysctl -w net.ipv4.tcp_rmem="4096 87380 67108864" > /dev/null 2>&1
+        sysctl -w net.ipv4.tcp_wmem="4096 65536 67108864" > /dev/null 2>&1
+        sysctl -w net.core.netdev_max_backlog=5000 > /dev/null 2>&1
+        ACTIONS_DONE+="✅ TCP буферы увеличены до 128 МБ\n"
+    else
+        echo "[✓] TCP буферы уже увеличены"
+        ACTIONS_DONE+="✅ TCP буферы уже были увеличены\n"
     fi
-
-    sysctl -p /etc/sysctl.d/99-xray-optimize.conf 2>&1 | grep -v "No such file"
     
     # MTU оптимизация (если не установлена)
     if [[ "$HAS_MTU_OPT" == "false" ]]; then
