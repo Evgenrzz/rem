@@ -289,6 +289,37 @@ EOF
         echo "[✓] TCP буферы уже увеличены"
         ACTIONS_DONE+="✅ TCP буферы уже были увеличены\n"
     fi
+
+    # Самопроверка/добавление: если после логики выше в конфиге всё ещё нет TFO или буферов, добавляем без вопросов
+    if ! grep -q "net.ipv4.tcp_fastopen" /etc/sysctl.d/99-xray-optimize.conf; then
+        echo "[+] Авто-добавление TCP Fast Open (самопроверка)"
+        cat >> /etc/sysctl.d/99-xray-optimize.conf << 'EOF'
+
+# Ускорение установки TCP соединений
+net.ipv4.tcp_fastopen = 3
+EOF
+        sysctl -w net.ipv4.tcp_fastopen=3 > /dev/null 2>&1
+        ACTIONS_DONE+="✅ TCP Fast Open добавлен (самопроверка)\n"
+    fi
+
+    if ! grep -q "net.core.rmem_max = 134217728" /etc/sysctl.d/99-xray-optimize.conf; then
+        echo "[+] Авто-добавление TCP буферов (самопроверка)"
+        cat >> /etc/sysctl.d/99-xray-optimize.conf << 'EOF'
+
+# TCP буферы для высокой пропускной способности
+net.core.rmem_max = 134217728
+net.core.wmem_max = 134217728
+net.ipv4.tcp_rmem = 4096 87380 67108864
+net.ipv4.tcp_wmem = 4096 65536 67108864
+net.core.netdev_max_backlog = 5000
+EOF
+        sysctl -w net.core.rmem_max=134217728 > /dev/null 2>&1
+        sysctl -w net.core.wmem_max=134217728 > /dev/null 2>&1
+        sysctl -w net.ipv4.tcp_rmem="4096 87380 67108864" > /dev/null 2>&1
+        sysctl -w net.ipv4.tcp_wmem="4096 65536 67108864" > /dev/null 2>&1
+        sysctl -w net.core.netdev_max_backlog=5000 > /dev/null 2>&1
+        ACTIONS_DONE+="✅ TCP буферы добавлены (самопроверка)\n"
+    fi
     
     # MTU оптимизация (если не установлена)
     if [[ "$HAS_MTU_OPT" == "false" ]]; then
