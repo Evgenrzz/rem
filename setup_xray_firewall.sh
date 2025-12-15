@@ -15,55 +15,92 @@ if [[ $EUID -ne 0 ]]; then
    exit 1
 fi
 
-# 1. Сброс UFW
-echo "[1/9] Сброс UFW..."
-apt-mark hold ufw 2>/dev/null || true
-ufw --force reset
+# Проверка: уже настроено или нет
+ALREADY_CONFIGURED=false
+if [[ -f /etc/sysctl.d/99-xray-optimize.conf ]] && \
+   [[ -f /etc/iptables/rules.v4 ]] && \
+   ufw status | grep -q "Status: active"; then
+    ALREADY_CONFIGURED=true
+    echo "🔍 Обнаружена существующая конфигурация"
+    echo "📋 Пропускаю настройку, выполняю только проверку..."
+    echo ""
+fi
 
-# 2. Политики по умолчанию
-echo "[2/9] Настройка политик UFW..."
-ufw default deny incoming
-ufw default allow outgoing
+if [[ "$ALREADY_CONFIGURED" == "false" ]]; then
+    # 1. Сброс UFW
+    echo "[1/9] Сброс UFW..."
+    apt-mark hold ufw 2>/dev/null || true
+    ufw --force reset
+else
+    echo "[ПРОПУСК] UFW уже настроен"
+fi
 
-# 3. SSH
-echo "[3/9] Разрешение SSH..."
-ufw allow 22/tcp comment 'SSH'
+if [[ "$ALREADY_CONFIGURED" == "false" ]]; then
+    # 2. Политики по умолчанию
+    echo "[2/9] Настройка политик UFW..."
+    ufw default deny incoming
+    ufw default allow outgoing
 
-# 4. XRay порты
-echo "[4/9] Разрешение XRay портов..."
-ufw allow 443/tcp comment 'XRay Reality'
-ufw allow 8443/tcp comment 'XRay Reality 2'
-ufw allow 8444/tcp comment 'XRay Reality 3'
-ufw allow 9443/tcp comment 'XRay Reality 4'
-ufw allow 9999/tcp comment 'XRay Reality 5'
+    # 3. SSH
+    echo "[3/9] Разрешение SSH..."
+    ufw allow 22/tcp comment 'SSH'
 
-# 5. Shadowsocks порты
-echo "[5/9] Разрешение Shadowsocks..."
-ufw allow 8388/tcp comment 'Shadowsocks ChaCha20'
-ufw allow 8388/udp comment 'Shadowsocks ChaCha20 UDP'
-ufw allow 8389/tcp comment 'Shadowsocks XChaCha20'
-ufw allow 8389/udp comment 'Shadowsocks XChaCha20 UDP'
-ufw allow 1234/tcp comment 'Shadowsocks Basic'
-ufw allow 1234/udp comment 'Shadowsocks Basic UDP'
+    # 4. XRay порты
+    echo "[4/9] Разрешение XRay портов..."
+    ufw allow 443/tcp comment 'XRay Reality'
+    ufw allow 8443/tcp comment 'XRay Reality 2'
+    ufw allow 8444/tcp comment 'XRay Reality 3'
+    ufw allow 9443/tcp comment 'XRay Reality 4'
+    ufw allow 9999/tcp comment 'XRay Reality 5'
 
-# 6. API управления (раскомментируй если используешь Remnawave)
-# ufw allow from 212.113.109.68 to any port 2222 proto tcp comment 'Remnawave Panel API'
+    # 5. Shadowsocks порты
+    echo "[5/9] Разрешение Shadowsocks..."
+    ufw allow 8388/tcp comment 'Shadowsocks ChaCha20'
+    ufw allow 8388/udp comment 'Shadowsocks ChaCha20 UDP'
+    ufw allow 8389/tcp comment 'Shadowsocks XChaCha20'
+    ufw allow 8389/udp comment 'Shadowsocks XChaCha20 UDP'
+    ufw allow 1234/tcp comment 'Shadowsocks Basic'
+    ufw allow 1234/udp comment 'Shadowsocks Basic UDP'
 
-# 7. Блокировки
-echo "[6/9] Блокировка LLMNR..."
-ufw deny 5355 comment 'Block LLMNR'
+    # 6. API управления (раскомментируй если используешь Remnawave)
+    # ufw allow from 212.113.109.68 to any port 2222 proto tcp comment 'Remnawave Panel API'
 
-# 8. Отключение IPv6 в UFW
-echo "[7/9] Отключение IPv6..."
-sed -i 's/IPV6=yes/IPV6=no/g' /etc/default/ufw
+    # 7. Блокировки
+    echo "[6/9] Блокировка LLMNR..."
+    ufw deny 5355 comment 'Block LLMNR'
 
-# 9. Включение UFW
-echo "[8/9] Включение UFW..."
-ufw --force enable
+    # 8. Отключение IPv6 в UFW
+    echo "[7/9] Отключение IPv6..."
+    sed -i 's/IPV6=yes/IPV6=no/g' /etc/default/ufw
 
-# 10. Системные оптимизации
-echo "[9/9] Настройка TCP BBR и оптимизаций..."
-cat > /etc/sysctl.d/99-xray-optimize.conf << 'EOF'
+    # 9. Включение UFW
+    echo "[8/9] Включение UFW..."
+    ufw --force enable
+
+    # 10. Системные оптимизации
+    echo "[9/9] Настройка системных параметров..."
+    
+    # Спрашиваем про BBR
+    echo ""
+    echo "⚙️  Установить TCP BBR (рекомендуется для VPN)?"
+    echo "   Если планируешь ставить BBR3 отдельно - выбери N"
+    read -p "   Установить стандартный BBR? (Y/n): " -n 1 -r BBR_CHOICE
+    echo ""
+    
+    if [[ $BBR_CHOICE =~ ^[Nn]$ ]]; then
+        echo "ℹ️  Пропуск установки BBR (установи BBR3 отдельно)"
+        cat > /etc/sysctl.d/99-xray-optimize.conf << 'EOF'
+# TCP оптимизации для VPN
+net.ipv4.tcp_syncookies = 0
+
+# Отключение IPv6
+net.ipv6.conf.all.disable_ipv6 = 1
+net.ipv6.conf.default.disable_ipv6 = 1
+net.ipv6.conf.lo.disable_ipv6 = 1
+EOF
+    else
+        echo "✅ Установка стандартного BBR"
+        cat > /etc/sysctl.d/99-xray-optimize.conf << 'EOF'
 # TCP оптимизации для VPN
 net.ipv4.tcp_syncookies = 0
 net.core.default_qdisc = fq
@@ -74,37 +111,65 @@ net.ipv6.conf.all.disable_ipv6 = 1
 net.ipv6.conf.default.disable_ipv6 = 1
 net.ipv6.conf.lo.disable_ipv6 = 1
 EOF
+    fi
 
-sysctl -p /etc/sysctl.d/99-xray-optimize.conf
+    sysctl -p /etc/sysctl.d/99-xray-optimize.conf
 
-# 11. Настройка iptables (TTL маскировка)
-echo "Настройка iptables для маскировки TTL..."
-mkdir -p /etc/iptables
+    # 11. Настройка iptables (TTL маскировка)
+    echo "Настройка iptables для маскировки TTL..."
+    mkdir -p /etc/iptables
 
-# Определяем сетевой интерфейс
-IFACE=$(ip route get 1.1.1.1 | awk '{print $5}' | head -n1)
-echo "Интерфейс: $IFACE"
+    # Определяем сетевой интерфейс
+    IFACE=$(ip route get 1.1.1.1 | awk '{print $5}' | head -n1)
+    echo "Интерфейс: $IFACE"
 
-# Очистка старых правил TTL (чтобы не было дублей)
-iptables -t mangle -D PREROUTING -p tcp --dport 443 -j TTL --ttl-set 64 2>/dev/null || true
-iptables -t mangle -D POSTROUTING -o $IFACE -j TTL --ttl-set 64 2>/dev/null || true
-iptables -t mangle -D POSTROUTING -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu 2>/dev/null || true
+    # Очистка старых правил TTL (чтобы не было дублей)
+    iptables -t mangle -D PREROUTING -p tcp --dport 443 -j TTL --ttl-set 64 2>/dev/null || true
+    iptables -t mangle -D POSTROUTING -o $IFACE -j TTL --ttl-set 64 2>/dev/null || true
+    iptables -t mangle -D POSTROUTING -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu 2>/dev/null || true
 
-# Добавление правил
-iptables -t mangle -A PREROUTING -p tcp --dport 443 -j TTL --ttl-set 64
-iptables -t mangle -A POSTROUTING -o $IFACE -j TTL --ttl-set 64
-iptables -t mangle -A POSTROUTING -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu
+    # Добавление правил
+    iptables -t mangle -A PREROUTING -p tcp --dport 443 -j TTL --ttl-set 64
+    iptables -t mangle -A POSTROUTING -o $IFACE -j TTL --ttl-set 64
+    iptables -t mangle -A POSTROUTING -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu
 
-# Сохранение правил
-iptables-save > /etc/iptables/rules.v4
+    # Сохранение правил
+    iptables-save > /etc/iptables/rules.v4
 
-# Установка iptables-persistent (автозагрузка правил)
-echo iptables-persistent iptables-persistent/autosave_v4 boolean true | debconf-set-selections
-echo iptables-persistent iptables-persistent/autosave_v6 boolean true | debconf-set-selections
-apt update -qq
-apt install -y iptables-persistent
+    # Установка iptables-persistent (автозагрузка правил)
+    echo iptables-persistent iptables-persistent/autosave_v4 boolean true | debconf-set-selections
+    echo iptables-persistent iptables-persistent/autosave_v6 boolean true | debconf-set-selections
+    apt update -qq
+    apt install -y iptables-persistent
 
-netfilter-persistent save
+    netfilter-persistent save
+    
+    echo ""
+    echo "✅ Настройка завершена!"
+else
+    echo "[ПРОПУСК] Все компоненты уже установлены"
+    
+    # Проверяем и исправляем только iptables если есть дубли
+    IFACE=$(ip route get 1.1.1.1 | awk '{print $5}' | head -n1)
+    PREROUTING_COUNT=$(iptables -t mangle -L PREROUTING -n | grep -c "TTL" || echo "0")
+    POSTROUTING_COUNT=$(iptables -t mangle -L POSTROUTING -n | grep -c "TTL" || echo "0")
+    
+    if [[ $PREROUTING_COUNT -gt 1 ]] || [[ $POSTROUTING_COUNT -gt 2 ]]; then
+        echo "⚠️ Обнаружены дубли iptables, исправляю..."
+        # Очистка дублей
+        iptables -t mangle -F PREROUTING 2>/dev/null || true
+        iptables -t mangle -F POSTROUTING 2>/dev/null || true
+        
+        # Добавление правил
+        iptables -t mangle -A PREROUTING -p tcp --dport 443 -j TTL --ttl-set 64
+        iptables -t mangle -A POSTROUTING -o $IFACE -j TTL --ttl-set 64
+        iptables -t mangle -A POSTROUTING -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu
+        
+        iptables-save > /etc/iptables/rules.v4
+        netfilter-persistent save
+        echo "✅ Дубли удалены, правила восстановлены"
+    fi
+fi
 
 # Финальная проверка
 echo ""
@@ -125,16 +190,19 @@ echo "----------------------------"
 ss -tulnp | grep -E ':(22|443|8443|8444|9443|9999|8388|8389|1234)\s' || echo "⚠️ Порты XRay еще не слушаются (запусти XRay)"
 echo ""
 
-# 3. Проверка TCP BBR
-echo "📋 3. TCP BBR СТАТУС:"
+# 3. Проверка TCP BBR/Congestion Control
+echo "📋 3. TCP CONGESTION CONTROL:"
 echo "----------------------------"
-BBR_STATUS=$(sysctl net.ipv4.tcp_congestion_control | awk '{print $3}')
-if [[ "$BBR_STATUS" == "bbr" ]]; then
-    echo "✅ TCP BBR включен: $BBR_STATUS"
+CC_STATUS=$(sysctl net.ipv4.tcp_congestion_control 2>/dev/null | awk '{print $3}' || echo "unknown")
+echo "Текущий: $CC_STATUS"
+if [[ "$CC_STATUS" == "bbr" ]]; then
+    echo "✅ Стандартный BBR активен"
+    lsmod | grep tcp_bbr && echo "✅ Модуль tcp_bbr загружен" || echo "⚠️ Модуль tcp_bbr не загружен"
+elif [[ "$CC_STATUS" == "bbr3" ]]; then
+    echo "✅ BBR3 активен"
 else
-    echo "❌ TCP BBR НЕ включен: $BBR_STATUS"
+    echo "ℹ️  Используется: $CC_STATUS"
 fi
-lsmod | grep tcp_bbr && echo "✅ Модуль tcp_bbr загружен" || echo "❌ Модуль tcp_bbr НЕ загружен"
 echo ""
 
 # 4. Проверка IPv6
@@ -218,7 +286,6 @@ echo "================================"
 ERRORS=0
 WARNINGS=0
 
-[[ "$BBR_STATUS" != "bbr" ]] && ((ERRORS++))
 [[ $PREROUTING_DUPES -gt 1 ]] && ((WARNINGS++))
 [[ $POSTROUTING_DUPES -gt 2 ]] && ((WARNINGS++))
 [[ ! -f /etc/iptables/rules.v4 ]] && ((ERRORS++))
