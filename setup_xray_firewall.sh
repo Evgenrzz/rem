@@ -109,20 +109,129 @@ netfilter-persistent save
 # Финальная проверка
 echo ""
 echo "================================"
-echo "Установка завершена!"
+echo "ПРОВЕРКА КОНФИГУРАЦИИ"
 echo "================================"
 echo ""
-echo "UFW статус:"
+
+# 1. Проверка UFW
+echo "📋 1. UFW СТАТУС И ПРАВИЛА:"
+echo "----------------------------"
 ufw status numbered
 echo ""
-echo "Открытые порты:"
-ss -tulnp | grep -E ':(22|443|8443|8444|9443|9999|8388|8389|1234)\s'
+
+# 2. Проверка открытых портов
+echo "📋 2. ОТКРЫТЫЕ ПОРТЫ (ss):"
+echo "----------------------------"
+ss -tulnp | grep -E ':(22|443|8443|8444|9443|9999|8388|8389|1234)\s' || echo "⚠️ Порты XRay еще не слушаются (запусти XRay)"
 echo ""
-echo "TCP BBR статус:"
-sysctl net.ipv4.tcp_congestion_control
-lsmod | grep tcp_bbr
+
+# 3. Проверка TCP BBR
+echo "📋 3. TCP BBR СТАТУС:"
+echo "----------------------------"
+BBR_STATUS=$(sysctl net.ipv4.tcp_congestion_control | awk '{print $3}')
+if [[ "$BBR_STATUS" == "bbr" ]]; then
+    echo "✅ TCP BBR включен: $BBR_STATUS"
+else
+    echo "❌ TCP BBR НЕ включен: $BBR_STATUS"
+fi
+lsmod | grep tcp_bbr && echo "✅ Модуль tcp_bbr загружен" || echo "❌ Модуль tcp_bbr НЕ загружен"
 echo ""
-echo "iptables правила (mangle table):"
-iptables -t mangle -L -n -v --line-numbers
+
+# 4. Проверка IPv6
+echo "📋 4. IPv6 СТАТУС:"
+echo "----------------------------"
+IPV6_STATUS=$(sysctl net.ipv6.conf.all.disable_ipv6 | awk '{print $3}')
+if [[ "$IPV6_STATUS" == "1" ]]; then
+    echo "✅ IPv6 отключен"
+else
+    echo "⚠️ IPv6 включен (может быть конфликт)"
+fi
 echo ""
-echo "✅ Конфигурация завершена успешно!"
+
+# 5. Проверка iptables правил
+echo "📋 5. IPTABLES MANGLE ПРАВИЛА:"
+echo "----------------------------"
+MANGLE_COUNT=$(iptables -t mangle -L -n | grep -c "TTL" || echo "0")
+echo "Найдено TTL правил: $MANGLE_COUNT"
+iptables -t mangle -L -n -v --line-numbers | grep -E "TTL|TCPMSS|Chain"
+echo ""
+
+# 6. Проверка на дубли в iptables
+echo "📋 6. ПРОВЕРКА ДУБЛЕЙ IPTABLES:"
+echo "----------------------------"
+PREROUTING_DUPES=$(iptables -t mangle -L PREROUTING -n | grep -c "TTL" || echo "0")
+POSTROUTING_DUPES=$(iptables -t mangle -L POSTROUTING -n | grep -c "TTL" || echo "0")
+if [[ $PREROUTING_DUPES -gt 1 ]]; then
+    echo "⚠️ ОБНАРУЖЕНЫ ДУБЛИ в PREROUTING ($PREROUTING_DUPES правил TTL)"
+else
+    echo "✅ PREROUTING: дублей нет ($PREROUTING_DUPES правило)"
+fi
+if [[ $POSTROUTING_DUPES -gt 2 ]]; then
+    echo "⚠️ ОБНАРУЖЕНЫ ДУБЛИ в POSTROUTING ($POSTROUTING_DUPES правил TTL)"
+else
+    echo "✅ POSTROUTING: дублей нет ($POSTROUTING_DUPES правила)"
+fi
+echo ""
+
+# 7. Проверка интерфейса
+echo "📋 7. СЕТЕВОЙ ИНТЕРФЕЙС:"
+echo "----------------------------"
+IFACE=$(ip route get 1.1.1.1 | awk '{print $5}' | head -n1)
+echo "Используемый интерфейс: $IFACE"
+ip addr show $IFACE | grep -E "inet |mtu"
+echo ""
+
+# 8. Проверка конфликтов портов
+echo "📋 8. КОНФЛИКТЫ ПОРТОВ:"
+echo "----------------------------"
+for PORT in 22 443 8443 8444 9443 9999 8388 8389 1234; do
+    if ss -tuln | grep -q ":$PORT "; then
+        PROCESS=$(ss -tulnp | grep ":$PORT " | awk '{print $7}' | head -n1)
+        echo "✅ Порт $PORT занят: $PROCESS"
+    else
+        echo "⚠️ Порт $PORT свободен (XRay не запущен?)"
+    fi
+done
+echo ""
+
+# 9. Проверка автозагрузки iptables
+echo "📋 9. АВТОЗАГРУЗКА IPTABLES:"
+echo "----------------------------"
+if systemctl is-enabled netfilter-persistent &>/dev/null; then
+    echo "✅ netfilter-persistent включен (правила загружаются при старте)"
+else
+    echo "⚠️ netfilter-persistent не включен"
+fi
+if [[ -f /etc/iptables/rules.v4 ]]; then
+    echo "✅ Файл /etc/iptables/rules.v4 существует"
+    echo "   Размер: $(wc -l < /etc/iptables/rules.v4) строк"
+else
+    echo "❌ Файл /etc/iptables/rules.v4 НЕ найден"
+fi
+echo ""
+
+# Финальная оценка
+echo "================================"
+echo "ИТОГОВАЯ ОЦЕНКА"
+echo "================================"
+
+ERRORS=0
+WARNINGS=0
+
+[[ "$BBR_STATUS" != "bbr" ]] && ((ERRORS++))
+[[ $PREROUTING_DUPES -gt 1 ]] && ((WARNINGS++))
+[[ $POSTROUTING_DUPES -gt 2 ]] && ((WARNINGS++))
+[[ ! -f /etc/iptables/rules.v4 ]] && ((ERRORS++))
+
+if [[ $ERRORS -eq 0 ]] && [[ $WARNINGS -eq 0 ]]; then
+    echo "✅ ВСЁ ОТЛИЧНО! Конфликтов не обнаружено."
+elif [[ $ERRORS -eq 0 ]]; then
+    echo "⚠️ Есть предупреждения ($WARNINGS), но критичных ошибок нет."
+else
+    echo "❌ Обнаружено ошибок: $ERRORS, предупреждений: $WARNINGS"
+fi
+
+echo ""
+echo "💡 Запусти XRay для проверки портов: systemctl status xray"
+echo "💡 Проверь логи UFW: tail -f /var/log/ufw.log"
+echo "================================"
