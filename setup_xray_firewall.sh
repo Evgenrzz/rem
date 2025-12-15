@@ -15,6 +15,14 @@ if [[ $EUID -ne 0 ]]; then
    exit 1
 fi
 
+# Проверка и установка UFW
+if ! command -v ufw &> /dev/null; then
+    echo "🔧 UFW не установлен, устанавливаю..."
+    apt update -qq
+    apt install -y ufw
+    echo "✅ UFW установлен"
+fi
+
 # Проверка: уже настроено или нет
 ALREADY_CONFIGURED=false
 if [[ -f /etc/sysctl.d/99-xray-optimize.conf ]] && \
