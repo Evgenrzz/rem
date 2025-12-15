@@ -205,8 +205,28 @@ net.ipv4.tcp_syncookies = 0
 net.ipv6.conf.all.disable_ipv6 = 1
 net.ipv6.conf.default.disable_ipv6 = 1
 net.ipv6.conf.lo.disable_ipv6 = 1
+
+# Ускорение установки TCP соединений
+net.ipv4.tcp_fastopen = 3
+
+# TCP буферы для высокой пропускной способности
+net.core.rmem_max = 134217728
+net.core.wmem_max = 134217728
+net.ipv4.tcp_rmem = 4096 87380 67108864
+net.ipv4.tcp_wmem = 4096 65536 67108864
+net.core.netdev_max_backlog = 5000
 EOF
+        # Применяем настройки немедленно
+        sysctl -w net.ipv4.tcp_fastopen=3 > /dev/null 2>&1
+        sysctl -w net.core.rmem_max=134217728 > /dev/null 2>&1
+        sysctl -w net.core.wmem_max=134217728 > /dev/null 2>&1
+        sysctl -w net.ipv4.tcp_rmem="4096 87380 67108864" > /dev/null 2>&1
+        sysctl -w net.ipv4.tcp_wmem="4096 65536 67108864" > /dev/null 2>&1
+        sysctl -w net.core.netdev_max_backlog=5000 > /dev/null 2>&1
+        
         ACTIONS_DONE+="✅ Базовые параметры sysctl настроены\n"
+        ACTIONS_DONE+="✅ TCP Fast Open установлен\n"
+        ACTIONS_DONE+="✅ TCP буферы увеличены до 128 МБ\n"
     fi
     
     # Спрашиваем про BBR (если не установлен)
@@ -232,8 +252,8 @@ EOF
         fi
     fi
     
-    # TCP Fast Open (если не установлен)
-    if [[ "$HAS_TFO" == "false" ]]; then
+    # TCP Fast Open (добавляем только если повторный запуск)
+    if [[ "$ALREADY_CONFIGURED" == "true" ]] && [[ "$HAS_TFO" == "false" ]]; then
         echo "[+] Установка TCP Fast Open (ускорение соединений для XHTTP)..."
         cat >> /etc/sysctl.d/99-xray-optimize.conf << 'EOF'
 
@@ -242,13 +262,13 @@ net.ipv4.tcp_fastopen = 3
 EOF
         sysctl -w net.ipv4.tcp_fastopen=3 > /dev/null 2>&1
         ACTIONS_DONE+="✅ TCP Fast Open установлен\n"
-    else
+    elif [[ "$ALREADY_CONFIGURED" == "true" ]] && [[ "$HAS_TFO" == "true" ]]; then
         echo "[✓] TCP Fast Open уже установлен"
         ACTIONS_DONE+="✅ TCP Fast Open уже был установлен\n"
     fi
     
-    # TCP буферы (если не установлены)
-    if [[ "$HAS_BUFFERS" == "false" ]]; then
+    # TCP буферы (добавляем только если повторный запуск)
+    if [[ "$ALREADY_CONFIGURED" == "true" ]] && [[ "$HAS_BUFFERS" == "false" ]]; then
         echo "[+] Увеличение TCP буферов для каналов >100 Мбит/с..."
         cat >> /etc/sysctl.d/99-xray-optimize.conf << 'EOF'
 
@@ -265,7 +285,7 @@ EOF
         sysctl -w net.ipv4.tcp_wmem="4096 65536 67108864" > /dev/null 2>&1
         sysctl -w net.core.netdev_max_backlog=5000 > /dev/null 2>&1
         ACTIONS_DONE+="✅ TCP буферы увеличены до 128 МБ\n"
-    else
+    elif [[ "$ALREADY_CONFIGURED" == "true" ]] && [[ "$HAS_BUFFERS" == "true" ]]; then
         echo "[✓] TCP буферы уже увеличены"
         ACTIONS_DONE+="✅ TCP буферы уже были увеличены\n"
     fi
@@ -278,13 +298,36 @@ EOF
         IFACE=$(ip route get 1.1.1.1 2>/dev/null | awk '{print $5}' | head -n1)
         CURRENT_MTU=$(ip link show $IFACE 2>/dev/null | grep -oP 'mtu \K\d+')
         echo "   Текущий интерфейс: $IFACE (MTU: $CURRENT_MTU)"
-        read -p "   Установить MTU 1420? (Y/n): " -n 1 -r MTU_CHOICE
+        
+        # Тест оптимального MTU
+        echo ""
+        echo "   🔍 Тестирование оптимального MTU..."
+        if ping -c 1 -M do -s 1472 8.8.8.8 &>/dev/null; then
+            echo "   ✅ MTU 1500 работает отлично"
+            MTU_RECOMMENDED=1500
+        elif ping -c 1 -M do -s 1452 8.8.8.8 &>/dev/null; then
+            echo "   ⚠️  Рекомендуется MTU 1480 (PPPoE обнаружен)"
+            MTU_RECOMMENDED=1480
+        elif ping -c 1 -M do -s 1392 8.8.8.8 &>/dev/null; then
+            echo "   ⚠️  Рекомендуется MTU 1420 (VPN/туннель обнаружен)"
+            MTU_RECOMMENDED=1420
+        else
+            echo "   ⚠️  Рекомендуется MTU 1420"
+            MTU_RECOMMENDED=1420
+        fi
+        
+        if [[ "$CURRENT_MTU" -eq 1500 ]] && [[ "$MTU_RECOMMENDED" -lt 1500 ]]; then
+            read -p "   Установить MTU $MTU_RECOMMENDED? (Y/n): " -n 1 -r MTU_CHOICE
+        else
+            read -p "   Установить MTU 1420? (Y/n): " -n 1 -r MTU_CHOICE
+            MTU_RECOMMENDED=1420
+        fi
         echo ""
         
         if [[ ! $MTU_CHOICE =~ ^[Nn]$ ]]; then
             if [[ -n "$IFACE" ]]; then
-                echo "✅ Установка MTU 1420 на $IFACE"
-                ip link set dev $IFACE mtu 1420
+                echo "✅ Установка MTU $MTU_RECOMMENDED на $IFACE"
+                ip link set dev $IFACE mtu $MTU_RECOMMENDED
                 
                 # Делаем постоянным через netplan или systemd-networkd
                 if [[ -d /etc/netplan ]]; then
@@ -294,10 +337,10 @@ network:
   version: 2
   ethernets:
     $IFACE:
-      mtu: 1420
+      mtu: $MTU_RECOMMENDED
 EOF
                     netplan apply 2>/dev/null || true
-                    ACTIONS_DONE+="✅ MTU 1420 установлен на $IFACE (netplan)\n"
+                    ACTIONS_DONE+="✅ MTU $MTU_RECOMMENDED установлен на $IFACE (netplan)\n"
                 elif [[ -d /etc/systemd/network ]]; then
                     # systemd-networkd
                     cat > /etc/systemd/network/10-$IFACE.network << EOF
@@ -305,10 +348,10 @@ EOF
 Name=$IFACE
 
 [Link]
-MTUBytes=1420
+MTUBytes=$MTU_RECOMMENDED
 EOF
                     systemctl restart systemd-networkd 2>/dev/null || true
-                    ACTIONS_DONE+="✅ MTU 1420 установлен на $IFACE (systemd-networkd)\n"
+                    ACTIONS_DONE+="✅ MTU $MTU_RECOMMENDED установлен на $IFACE (systemd-networkd)\n"
                 else
                     ACTIONS_DONE+="⚠️  MTU установлен временно (до перезагрузки)\n"
                 fi
