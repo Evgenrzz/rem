@@ -18,27 +18,133 @@ fi
 # Проверка и установка UFW
 if ! command -v ufw &> /dev/null; then
     echo "🔧 UFW не установлен, устанавливаю..."
+    apt-mark unhold ufw 2>/dev/null || true
     apt update -qq
-    apt install -y ufw
+    apt install -y --allow-change-held-packages ufw
     echo "✅ UFW установлен"
 fi
 
 # Проверка: уже настроено или нет
 ALREADY_CONFIGURED=false
-if [[ -f /etc/sysctl.d/99-xray-optimize.conf ]] && \
-   [[ -f /etc/iptables/rules.v4 ]] && \
-   ufw status | grep -q "Status: active"; then
+CONFIG_STATUS=""
+
+echo "🔍 Проверка текущей конфигурации..."
+echo ""
+
+# Проверка компонентов
+HAS_SYSCTL=false
+HAS_IPTABLES=false
+HAS_UFW_ACTIVE=false
+HAS_BBR=false
+HAS_TFO=false
+HAS_BUFFERS=false
+HAS_MTU_OPT=false
+
+if [[ -f /etc/sysctl.d/99-xray-optimize.conf ]]; then
+    HAS_SYSCTL=true
+    CONFIG_STATUS+="✅ Файл конфигурации sysctl существует\n"
+    
+    # Проверка BBR
+    if grep -q "tcp_congestion_control.*bbr" /etc/sysctl.d/99-xray-optimize.conf; then
+        HAS_BBR=true
+        CONFIG_STATUS+="✅ BBR настроен\n"
+    else
+        CONFIG_STATUS+="⚠️  BBR не настроен\n"
+    fi
+    
+    # Проверка TCP Fast Open
+    if grep -q "tcp_fastopen" /etc/sysctl.d/99-xray-optimize.conf; then
+        HAS_TFO=true
+        CONFIG_STATUS+="✅ TCP Fast Open настроен\n"
+    else
+        CONFIG_STATUS+="⚠️  TCP Fast Open не настроен\n"
+    fi
+    
+    # Проверка TCP буферов
+    if grep -q "rmem_max.*134217728" /etc/sysctl.d/99-xray-optimize.conf; then
+        HAS_BUFFERS=true
+        CONFIG_STATUS+="✅ TCP буферы увеличены\n"
+    else
+        CONFIG_STATUS+="⚠️  TCP буферы не оптимизированы\n"
+    fi
+else
+    CONFIG_STATUS+="⚠️  Файл конфигурации sysctl отсутствует\n"
+fi
+
+if [[ -f /etc/iptables/rules.v4 ]]; then
+    HAS_IPTABLES=true
+    CONFIG_STATUS+="✅ Правила iptables существуют\n"
+else
+    CONFIG_STATUS+="⚠️  Правила iptables отсутствуют\n"
+fi
+
+if ufw status | grep -q "Status: active"; then
+    HAS_UFW_ACTIVE=true
+    CONFIG_STATUS+="✅ UFW активен\n"
+else
+    CONFIG_STATUS+="⚠️  UFW не активен\n"
+fi
+
+# Проверка MTU оптимизации
+IFACE=$(ip route get 1.1.1.1 2>/dev/null | awk '{print $5}' | head -n1)
+if [[ -n "$IFACE" ]]; then
+    CURRENT_MTU=$(ip link show $IFACE | grep -oP 'mtu \K\d+')
+    if [[ "$CURRENT_MTU" -lt 1500 ]]; then
+        HAS_MTU_OPT=true
+        CONFIG_STATUS+="✅ MTU оптимизирован ($IFACE: $CURRENT_MTU)\n"
+    else
+        CONFIG_STATUS+="ℹ️  MTU стандартный ($IFACE: $CURRENT_MTU)\n"
+    fi
+fi
+
+echo -e "$CONFIG_STATUS"
+echo ""
+
+# Определяем нужна ли полная установка
+if [[ "$HAS_SYSCTL" == "true" ]] && [[ "$HAS_IPTABLES" == "true" ]] && [[ "$HAS_UFW_ACTIVE" == "true" ]]; then
     ALREADY_CONFIGURED=true
-    echo "🔍 Обнаружена существующая конфигурация"
-    echo "📋 Пропускаю настройку, выполняю только проверку..."
+    echo "📋 Базовая конфигурация обнаружена"
+    echo ""
+    
+    # Спрашиваем что добавить
+    INSTALL_COMPONENTS=false
+    
+    if [[ "$HAS_TFO" == "false" ]] || [[ "$HAS_BUFFERS" == "false" ]] || [[ "$HAS_BBR" == "false" ]]; then
+        echo "🔧 Доступны дополнительные оптимизации:"
+        [[ "$HAS_BBR" == "false" ]] && echo "   - TCP BBR"
+        [[ "$HAS_TFO" == "false" ]] && echo "   - TCP Fast Open"
+        [[ "$HAS_BUFFERS" == "false" ]] && echo "   - Увеличенные TCP буферы"
+        [[ "$HAS_MTU_OPT" == "false" ]] && echo "   - MTU оптимизация"
+        echo ""
+        read -p "Установить отсутствующие компоненты? (Y/n): " -n 1 -r INSTALL_CHOICE
+        echo ""
+        if [[ ! $INSTALL_CHOICE =~ ^[Nn]$ ]]; then
+            INSTALL_COMPONENTS=true
+        fi
+    else
+        echo "✅ Все компоненты уже установлены"
+        echo "Переход к проверке..."
+        echo ""
+    fi
+else
+    echo "🚀 Начинаю полную установку..."
     echo ""
 fi
 
-if [[ "$ALREADY_CONFIGURED" == "false" ]]; then
-    # 1. Сброс UFW
-    echo "[1/9] Сброс UFW..."
-    apt-mark hold ufw 2>/dev/null || true
-    ufw --force reset
+if [[ "$ALREADY_CONFIGURED" == "false" ]] || [[ "$INSTALL_COMPONENTS" == "true" ]]; then
+    
+    # Список выполненных действий
+    ACTIONS_DONE=""
+    
+    if [[ "$ALREADY_CONFIGURED" == "false" ]]; then
+        # 1. Сброс UFW
+        echo "[1/9] Сброс UFW..."
+        apt-mark hold ufw 2>/dev/null || true
+        ufw --force reset
+        ACTIONS_DONE+="✅ UFW сброшен и настроен\n"
+    else
+        echo "[ПРОПУСК] UFW уже настроен"
+    fi
 else
     echo "[ПРОПУСК] UFW уже настроен"
 fi
@@ -88,6 +194,19 @@ if [[ "$ALREADY_CONFIGURED" == "false" ]]; then
     # 10. Системные оптимизации
     echo "[9/9] Настройка системных параметров..."
     
+    # Базовый конфиг (всегда создаём)
+    cat > /etc/sysctl.d/99-xray-optimize.conf << 'EOF'
+# TCP оптимизации для VPN
+net.ipv4.tcp_syncookies = 0
+
+# Отключение IPv6
+net.ipv6.conf.all.disable_ipv6 = 1
+net.ipv6.conf.default.disable_ipv6 = 1
+net.ipv6.conf.lo.disable_ipv6 = 1
+EOF
+
+    ACTIONS_DONE+="✅ Базовые параметры sysctl настроены\n"
+    
     # Спрашиваем про BBR
     echo ""
     echo "⚙️  Установить TCP BBR (рекомендуется для VPN)?"
@@ -97,31 +216,119 @@ if [[ "$ALREADY_CONFIGURED" == "false" ]]; then
     
     if [[ $BBR_CHOICE =~ ^[Nn]$ ]]; then
         echo "ℹ️  Пропуск установки BBR (установи BBR3 отдельно)"
-        cat > /etc/sysctl.d/99-xray-optimize.conf << 'EOF'
-# TCP оптимизации для VPN
-net.ipv4.tcp_syncookies = 0
-
-# Отключение IPv6
-net.ipv6.conf.all.disable_ipv6 = 1
-net.ipv6.conf.default.disable_ipv6 = 1
-net.ipv6.conf.lo.disable_ipv6 = 1
-EOF
+        ACTIONS_DONE+="⚠️  BBR не установлен (установи BBR3 отдельно)\n"
     else
         echo "✅ Установка стандартного BBR"
-        cat > /etc/sysctl.d/99-xray-optimize.conf << 'EOF'
-# TCP оптимизации для VPN
-net.ipv4.tcp_syncookies = 0
+        cat >> /etc/sysctl.d/99-xray-optimize.conf << 'EOF'
+
+# TCP BBR
 net.core.default_qdisc = fq
 net.ipv4.tcp_congestion_control = bbr
-
-# Отключение IPv6
-net.ipv6.conf.all.disable_ipv6 = 1
-net.ipv6.conf.default.disable_ipv6 = 1
-net.ipv6.conf.lo.disable_ipv6 = 1
 EOF
+        ACTIONS_DONE+="✅ TCP BBR установлен\n"
+    fi
+    
+    # TCP Fast Open
+    echo ""
+    echo "⚙️  Установить TCP Fast Open (ускорение соединений)?"
+    echo "   Рекомендуется для XHTTP протокола"
+    read -p "   Установить? (Y/n): " -n 1 -r TFO_CHOICE
+    echo ""
+    
+    if [[ ! $TFO_CHOICE =~ ^[Nn]$ ]]; then
+        echo "✅ Установка TCP Fast Open"
+        cat >> /etc/sysctl.d/99-xray-optimize.conf << 'EOF'
+
+# TCP Fast Open
+net.ipv4.tcp_fastopen = 3
+EOF
+        ACTIONS_DONE+="✅ TCP Fast Open установлен\n"
+    else
+        echo "ℹ️  Пропуск TCP Fast Open"
+    fi
+    
+    # TCP буферы
+    echo ""
+    echo "⚙️  Увеличить TCP буферы для высокой скорости?"
+    echo "   Рекомендуется для каналов >100 Мбит/с"
+    read -p "   Установить? (Y/n): " -n 1 -r BUFFER_CHOICE
+    echo ""
+    
+    if [[ ! $BUFFER_CHOICE =~ ^[Nn]$ ]]; then
+        echo "✅ Увеличение TCP буферов"
+    netfilter-persistent save
+    
+    ACTIONS_DONE+="✅ iptables правила настроены и сохранены\n"
+    
+    echo ""
+    echo "✅ Настройка завершена!"
+    
+    # Вывод итогов
+    echo ""
+    echo "================================"
+    echo "ВЫПОЛНЕННЫЕ ДЕЙСТВИЯ"
+    echo "================================"
+    echo -e "$ACTIONS_DONE"
+    echo "================================"
+net.core.wmem_max = 134217728
+net.ipv4.tcp_rmem = 4096 87380 67108864
+net.ipv4.tcp_wmem = 4096 65536 67108864
+net.core.netdev_max_backlog = 5000
+EOF
+        ACTIONS_DONE+="✅ TCP буферы увеличены\n"
+    else
+        echo "ℹ️  Пропуск увеличения буферов"
     fi
 
-    sysctl -p /etc/sysctl.d/99-xray-optimize.conf
+    sysctl -p /etc/sysctl.d/99-xray-optimize.conf 2>&1 | grep -v "No such file"
+    
+    # MTU оптимизация
+    echo ""
+    echo "⚙️  Настроить MTU оптимизацию?"
+    echo "   Рекомендуется если провайдер использует PPPoE или VPN"
+    IFACE=$(ip route get 1.1.1.1 2>/dev/null | awk '{print $5}' | head -n1)
+    CURRENT_MTU=$(ip link show $IFACE 2>/dev/null | grep -oP 'mtu \K\d+')
+    echo "   Текущий интерфейс: $IFACE (MTU: $CURRENT_MTU)"
+    read -p "   Установить MTU 1420? (Y/n): " -n 1 -r MTU_CHOICE
+    echo ""
+    
+    if [[ ! $MTU_CHOICE =~ ^[Nn]$ ]]; then
+        if [[ -n "$IFACE" ]]; then
+            echo "✅ Установка MTU 1420 на $IFACE"
+            ip link set dev $IFACE mtu 1420
+            
+            # Делаем постоянным через netplan или systemd-networkd
+            if [[ -d /etc/netplan ]]; then
+                # Netplan (Ubuntu 18.04+)
+                cat > /etc/netplan/99-mtu.yaml << EOF
+network:
+  version: 2
+  ethernets:
+    $IFACE:
+      mtu: 1420
+EOF
+                netplan apply 2>/dev/null || true
+                ACTIONS_DONE+="✅ MTU 1420 установлен на $IFACE (netplan)\n"
+            elif [[ -d /etc/systemd/network ]]; then
+                # systemd-networkd
+                cat > /etc/systemd/network/10-$IFACE.network << EOF
+[Match]
+Name=$IFACE
+
+[Link]
+MTUBytes=1420
+EOF
+                systemctl restart systemd-networkd 2>/dev/null || true
+                ACTIONS_DONE+="✅ MTU 1420 установлен на $IFACE (systemd-networkd)\n"
+            else
+                ACTIONS_DONE+="⚠️  MTU установлен временно (до перезагрузки)\n"
+            fi
+        else
+            echo "❌ Не удалось определить сетевой интерфейс"
+        fi
+    else
+        echo "ℹ️  Пропуск MTU оптимизации"
+    fi
 
     # 11. Настройка iptables (TTL маскировка)
     echo "Настройка iptables для маскировки TTL..."
