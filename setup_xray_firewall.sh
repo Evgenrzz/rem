@@ -458,12 +458,95 @@ else
 fi
 echo ""
 
-# 7. Проверка интерфейса
-echo "📋 7. СЕТЕВОЙ ИНТЕРФЕЙС:"
+# 7. Проверка интерфейса и MTU
+echo "📋 7. СЕТЕВОЙ ИНТЕРФЕЙС И MTU:"
 echo "----------------------------"
 IFACE=$(ip route get 1.1.1.1 | awk '{print $5}' | head -n1)
 echo "Используемый интерфейс: $IFACE"
 ip addr show $IFACE | grep -E "inet |mtu"
+
+# Проверка оптимального MTU
+echo ""
+echo "🔍 Проверка оптимального MTU:"
+CURRENT_MTU=$(ip link show $IFACE 2>/dev/null | grep -oP 'mtu \K\d+')
+echo "   Текущий MTU: $CURRENT_MTU"
+
+# Тест MTU с ping (без фрагментации)
+echo "   Тестирование MTU до 8.8.8.8..."
+if ping -c 1 -M do -s 1472 8.8.8.8 &>/dev/null; then
+    echo "   ✅ MTU 1500 работает (пакеты 1472+28 байт проходят)"
+    MTU_RECOMMENDED=1500
+elif ping -c 1 -M do -s 1452 8.8.8.8 &>/dev/null; then
+    echo "   ⚠️  MTU 1500 не проходит, но 1480 работает"
+    echo "   💡 Рекомендуется: MTU 1480 (PPPoE обнаружен)"
+    MTU_RECOMMENDED=1480
+elif ping -c 1 -M do -s 1392 8.8.8.8 &>/dev/null; then
+    echo "   ⚠️  MTU 1480 не проходит, но 1420 работает"
+    echo "   💡 Рекомендуется: MTU 1420 (VPN/туннель обнаружен)"
+    MTU_RECOMMENDED=1420
+else
+    echo "   ❌ Проблемы с MTU, рекомендуется 1420"
+    MTU_RECOMMENDED=1420
+fi
+
+if [[ "$CURRENT_MTU" -ne "$MTU_RECOMMENDED" ]]; then
+    echo ""
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "💡 КОМАНДЫ ДЛЯ РУЧНОЙ УСТАНОВКИ MTU"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo ""
+    echo "1️⃣  Установить MTU $MTU_RECOMMENDED временно (до перезагрузки):"
+    echo "    sudo ip link set dev $IFACE mtu $MTU_RECOMMENDED"
+    echo ""
+    echo "2️⃣  Проверить применение:"
+    echo "    ip link show $IFACE | grep mtu"
+    echo ""
+    echo "3️⃣  Сделать постоянным (выбери свой метод):"
+    echo ""
+    echo "    ┌─ Вариант A: Netplan (Ubuntu 18.04+, Debian 11+)"
+    echo "    │"
+    echo "    │  sudo bash -c 'cat > /etc/netplan/99-mtu.yaml <<EOF"
+    echo "    │  network:"
+    echo "    │    version: 2"
+    echo "    │    ethernets:"
+    echo "    │      $IFACE:"
+    echo "    │        mtu: $MTU_RECOMMENDED"
+    echo "    │  EOF'"
+    echo "    │"
+    echo "    │  sudo netplan apply"
+    echo "    └─"
+    echo ""
+    echo "    ┌─ Вариант B: systemd-networkd (Debian, CentOS, RHEL)"
+    echo "    │"
+    echo "    │  sudo bash -c 'cat > /etc/systemd/network/10-$IFACE.network <<EOF"
+    echo "    │  [Match]"
+    echo "    │  Name=$IFACE"
+    echo "    │  "
+    echo "    │  [Link]"
+    echo "    │  MTUBytes=$MTU_RECOMMENDED"
+    echo "    │  EOF'"
+    echo "    │"
+    echo "    │  sudo systemctl restart systemd-networkd"
+    echo "    └─"
+    echo ""
+    echo "    ┌─ Вариант C: /etc/network/interfaces (старый Debian/Ubuntu)"
+    echo "    │"
+    echo "    │  sudo bash -c 'echo \"post-up ip link set dev $IFACE mtu $MTU_RECOMMENDED\" >> /etc/network/interfaces'"
+    echo "    │  sudo systemctl restart networking"
+    echo "    └─"
+    echo ""
+    echo "4️⃣  Проверка после установки:"
+    echo "    ip link show $IFACE | grep mtu"
+    echo "    ping -c 3 -M do -s $((MTU_RECOMMENDED - 28)) 8.8.8.8"
+    echo ""
+    echo "5️⃣  Откат если что-то пошло не так:"
+    echo "    sudo ip link set dev $IFACE mtu 1500"
+    echo "    sudo rm /etc/netplan/99-mtu.yaml && sudo netplan apply"
+    echo ""
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+else
+    echo "   ✅ MTU оптимален ($CURRENT_MTU), настройка не требуется"
+fi
 echo ""
 
 # 8. Проверка конфликтов портов
