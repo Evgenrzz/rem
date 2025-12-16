@@ -1,0 +1,166 @@
+
+##VLESS_GRPC_REALITY TMP
+```json
+{
+  "log": {
+    "loglevel": "info"
+  },
+  "dns": {
+    "servers": [
+      "8.8.8.8"
+    ],
+    "disableCache": false,
+    "queryStrategy": "UseIPv4",
+    "useSystemHosts": false,
+    "disableFallback": false
+  },
+  "inbounds": [
+    {
+      "tag": "grpc",
+      "port": 443,
+      "protocol": "vless",
+      "settings": {
+        "clients": [],
+        "decryption": "none"
+      },
+      "sniffing": {
+        "enabled": true,
+        "destOverride": [
+          "http"
+        ]
+      },
+      "streamSettings": {
+        "network": "grpc",
+        "security": "reality",
+        "grpcSettings": {
+          "authority": "kinopoisk.ru",
+          "multiMode": false,
+          "serviceName": "kinopoisk.ru"
+        },
+        "realitySettings": {
+          "show": false,
+          "target": "kinopoisk.ru:443",
+          "shortIds": [
+            "78825b375c3094f3"
+          ],
+          "privateKey": "UcrAWUH1puUoH_3pk6Puq_rJLFpYEf6Eux1LgEaPfz0",
+          "fingerprint": "chrome",
+          "serverNames": [
+            "kinopoisk.ru"
+          ]
+        }
+      }
+    }
+  ],
+  "outbounds": [
+    {
+      "tag": "direct",
+      "protocol": "freedom",
+      "settings": {
+        "domainStrategy": "UseIPv4"
+      }
+    },
+    {
+      "tag": "blocked",
+      "protocol": "blackhole",
+      "settings": {}
+    }
+  ],
+  "routing": {
+    "rules": [
+      {
+        "type": "field",
+        "protocol": [
+          "bittorrent"
+        ],
+        "outboundTag": "blocked"
+      },
+      {
+        "ip": [
+          "geoip:private"
+        ],
+        "type": "field",
+        "outboundTag": "blocked"
+      }
+    ],
+    "domainStrategy": "IPIfNonMatch"
+  }
+}
+```
+
+
+##vless-reality-grpc TMP
+```json
+{
+  "log": {
+    "loglevel": "warning"
+  },
+  "inbounds": [
+    {
+      "tag": "vless-reality-grpc",
+      "port": 7443,
+      "protocol": "vless",
+      "settings": {
+        "clients": [],
+        "decryption": "none"
+      },
+      "streamSettings": {
+        "network": "grpc",
+        "security": "reality",
+        "grpcSettings": {
+          "serviceName": ""
+        },
+        "realitySettings": {
+          "dest": "login.vk.com:443",
+          "show": false,
+          "spiderX": "/",
+          "shortIds": [
+            "4d2cf3"
+          ],
+          "publicKey": "65qjkKuzRntNyr26Qxc_QVA3mOPBwl1wWQfObNGJHzA",
+          "privateKey": "kgYnKUnF-lhseEzkIVRDYCfgqW3cGHOmhiSOJcMsYNY",
+          "fingerprint": "chrome",
+          "serverNames": [
+            "login.vk.com"
+          ]
+        }
+      }
+    }
+  ],
+  "outbounds": [
+    {
+      "tag": "DIRECT",
+      "protocol": "freedom"
+    },
+    {
+      "tag": "BLOCK",
+      "protocol": "blackhole"
+    }
+  ],
+  "routing": {
+    "rules": [
+      {
+        "ip": [
+          "geoip:private"
+        ],
+        "type": "field",
+        "outboundTag": "BLOCK"
+      },
+      {
+        "type": "field",
+        "domain": [
+          "geosite:private"
+        ],
+        "outboundTag": "BLOCK"
+      },
+      {
+        "type": "field",
+        "protocol": [
+          "bittorrent"
+        ],
+        "outboundTag": "BLOCK"
+      }
+    ]
+  }
+}
+```
