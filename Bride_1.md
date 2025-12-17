@@ -1,4 +1,4 @@
-##Bridge Profile-SS
+##Bridge Profile out
 ```bash
 {
   "log": {
@@ -7,7 +7,7 @@
   "dns": {},
   "inbounds": [
     {
-      "tag": "BRIDGE_NL_IN",
+      "tag": "BRIDGE_DE_IN",
       "port": 9999,
       "listen": "0.0.0.0",
       "protocol": "shadowsocks",
@@ -19,7 +19,8 @@
         "enabled": true,
         "destOverride": [
           "http",
-          "tls"
+          "tls",
+          "quic"
         ]
       }
     }
@@ -50,7 +51,7 @@
 
 
 
-##Bridge_v
+##Bridge
 ```bash
 {
   "log": {
@@ -70,28 +71,29 @@
         "enabled": true,
         "destOverride": [
           "http",
-          "tls"
+          "tls",
+          "quic"
         ]
       },
       "streamSettings": {
         "network": "xhttp",
         "security": "reality",
         "xhttpSettings": {
-          "host": "www.kinopoisk.ru",
+          "host": "kinopoisk.ru",
           "mode": "auto",
-          "path": "/api/v2/search"
+          "path": "/api/v2/stream"
         },
         "realitySettings": {
           "show": false,
           "xver": 0,
           "target": "kinopoisk.ru:443",
           "shortIds": [
-            "",
-            "6a3f"
+            ""
           ],
-          "privateKey": "ZH9GkDsVMmH2UJ0BRmwzhDFCOUEDORK0R1-vEy3Hg2c",
+          "privateKey": "Dg7ltW8Cae1IgfeUgCwvWfzamwURJVJNNEbXagPPCVY",
           "serverNames": [
-            "kinopoisk.ru"
+            "kinopoisk.ru",
+            "www.kinopoisk.ru"
           ]
         }
       }
@@ -107,12 +109,13 @@
       "protocol": "blackhole"
     },
     {
-      "tag": "SS_OUTBOUND_TO_NL",
+      "tag": "SS_OUTBOUND_TO_DE",
       "protocol": "shadowsocks",
       "settings": {
         "servers": [
           {
             "port": 9999,
+            "email": "bridge_user_001",
             "level": 0,
             "method": "chacha20-ietf-poly1305",
             "address": "nl-2.xorekvpn.net",
@@ -158,7 +161,7 @@
         "inboundTag": [
           "PUBLIC_RU_INBOUND"
         ],
-        "outboundTag": "SS_OUTBOUND_TO_NL"
+        "outboundTag": "SS_OUTBOUND_TO_DE"
       }
     ]
   }
