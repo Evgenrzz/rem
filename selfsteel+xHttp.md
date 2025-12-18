@@ -4,7 +4,6 @@ SELF_STEAL_DOMAIN=node.temnoevpn.net
 SELF_STEAL_PORT=8443
 ```
 ------------**#selfsteel**------------<br/>
-mkdir -p /opt/selfsteel && cd /opt/selfsteel && nano Caddyfile  <br/>
 nano docker-compose.yml
 ```
 services:
@@ -28,6 +27,7 @@ volumes:
 ```
 
 ------------**#Caddyfile**--------------------
+mkdir -p /opt/selfsteel && cd /opt/selfsteel && nano Caddyfile  <br/>
 ```
 {
     auto_https disable_redirects
