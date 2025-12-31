@@ -1,4 +1,6 @@
-##Bridge Profile out
+----------------------------
+Bridge Profile out
+--------------------------------
 ```bash
 {
   "log": {
@@ -7,7 +9,7 @@
   "dns": {},
   "inbounds": [
     {
-      "tag": "BRIDGE_DE_IN",
+      "tag": "BRIDGE_NL_IN2",
       "port": 9999,
       "listen": "0.0.0.0",
       "protocol": "shadowsocks",
@@ -51,7 +53,9 @@
 
 
 
-##Bridge
+----------------------------------
+Bridge [RU]
+---------------------------------
 ```bash
 {
   "log": {
@@ -59,7 +63,7 @@
   },
   "inbounds": [
     {
-      "tag": "PUBLIC_RU_INBOUND",
+      "tag": "PUBLIC_RU_INBOUND2",
       "port": 443,
       "listen": "0.0.0.0",
       "protocol": "vless",
@@ -88,9 +92,10 @@
           "xver": 0,
           "target": "kinopoisk.ru:443",
           "shortIds": [
-            ""
+            "",
+            "02a5283fd45ac213"
           ],
-          "privateKey": "Dg7ltW8Cae1IgfeUgCwvWfzamwURJVJNNEbXagPPCVY",
+          "privateKey": "1tRwfdVmSk9wU-aG1V3uTmGLTgMaLpV-OK60UDKhkzc",
           "serverNames": [
             "kinopoisk.ru",
             "www.kinopoisk.ru"
@@ -109,17 +114,17 @@
       "protocol": "blackhole"
     },
     {
-      "tag": "SS_OUTBOUND_TO_DE",
+      "tag": "SS_OUTBOUND_TO_NL2",
       "protocol": "shadowsocks",
       "settings": {
         "servers": [
           {
             "port": 9999,
-            "email": "bridge_user_001",
+            "email": "bridge_user_002",
             "level": 0,
             "method": "chacha20-ietf-poly1305",
-            "address": "nl-2.xorekvpn.net",
-            "password": "TzsXHhvpvhcZjuwMn5dxdb7u99htcp3x"
+            "address": "nl-3.xorekvpn.net",
+            "password": "xhytMTJUq-y0UWKKCbYpQh3mpBzJSRX3"
           }
         ]
       }
@@ -159,9 +164,9 @@
       },
       {
         "inboundTag": [
-          "PUBLIC_RU_INBOUND"
+          "PUBLIC_RU_INBOUND2"
         ],
-        "outboundTag": "SS_OUTBOUND_TO_DE"
+        "outboundTag": "SS_OUTBOUND_TO_NL2"
       }
     ]
   }
